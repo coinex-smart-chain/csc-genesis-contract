@@ -1,0 +1,18 @@
+{
+  "name": "csc_genesis_contract",
+  "version": "1.0.0",
+  "description": "csc(coinex smart chain) system contracts",
+  "main": "generate-contracts.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "truffle test"
+  },
+  "author": "developer@coinex.org",
+  "license": "ISC",
+  "dependencies": {
+    "@openzeppelin/test-helpers": "^0.5.10",
+    "nunjucks": "^3.2.3"
+  }
+}
