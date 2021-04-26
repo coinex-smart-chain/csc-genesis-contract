@@ -22,8 +22,8 @@ contract Slash is System {
     uint256 slashPrevNumber;
     uint256 decreasePrevNumber;
 
-    event ValidatorSlash(address indexed validator);
-    event ValidatorDecreasedMissedBlockCounter(address []validators, uint256 []missedBlockCounters, uint256);
+    event ValidatorMissedBlock(address indexed validator);
+    event ValidatorDecreasedMissedBlockCounter(address []validators, uint256 []missedBlockCounters, uint256 decreasedCount);
 
     modifier onlyNotSlashed() {
         require(block.number > slashPrevNumber, "Already slashed");
@@ -40,7 +40,7 @@ contract Slash is System {
     function initialize() external onlyNotInitialized {
         validatorContract = Validators(ValidatorContractAddr);
         slashThreshold = 48;
-        decreaseRate = 24;
+        decreaseRate = 48;
         initialized = true;
     }
 
@@ -65,7 +65,7 @@ contract Slash is System {
             validatorContract.slashValidator(validator);
             slashRecords[validator].missedBlocksCounter = 0;
         }
-        emit ValidatorSlash(validator);
+        emit ValidatorMissedBlock(validator);
     }
 
     function decreaseMissedBlocksCounter(address[] calldata validators, uint256 epoch)
@@ -116,10 +116,10 @@ contract Slash is System {
         // remove it out of array if exist
         if (slashRecords[validator].exist && slashValidators.length > 0) {
             if (slashRecords[validator].index != slashValidators.length - 1) {
-                address val = slashValidators[slashValidators.length - 1];
-                slashValidators[slashRecords[val].index] = val;
+                address lastValidator = slashValidators[slashValidators.length - 1];
+                slashValidators[slashRecords[validator].index] = lastValidator;
 
-                slashRecords[val].index = slashRecords[val].index;
+                slashRecords[lastValidator].index = slashRecords[validator].index;
             }
             slashValidators.pop();
             slashRecords[validator].index = 0;

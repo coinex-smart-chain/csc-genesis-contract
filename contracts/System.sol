@@ -4,14 +4,12 @@ pragma solidity 0.6.12;
 contract System {
     bool public initialized;
 
-    address public ValidatorContractAddr;
-    address public SlashContractAddr;
-    // just for test
-    address public coinbase;
+    address public constant ValidatorContractAddr = 0x0000000000000000000000000000000000001000;
+    address public constant SlashContractAddr = 0x0000000000000000000000000000000000001001;
 
 
     modifier onlyCoinbase() {
-        require(msg.sender == coinbase, "the message sender must be the block producer");
+        require(msg.sender == block.coinbase, "the message sender must be the block producer");
         _;
     }
 
@@ -38,15 +36,6 @@ contract System {
     modifier onlyBlockEpoch(uint256 epoch) {
         require(block.number % epoch == 0, "Block epoch only");
         _;
-    }
-
-    function setContracts(address valAddr, address slashAddr) public {
-        ValidatorContractAddr = valAddr;
-        SlashContractAddr = slashAddr;
-    }
-
-    function setCoinbase(address _coinbase) public {
-        coinbase = _coinbase;
     }
 
 }

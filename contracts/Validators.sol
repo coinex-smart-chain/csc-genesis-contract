@@ -66,8 +66,6 @@ contract Validators is System {
     address[] public validatorSet;
     // total staking amount of all validators
     uint256 public totalStaking;
-    // total slash amount
-    uint256 public totalSlash;
 
     // slash contract
     Slash slash;
@@ -78,18 +76,14 @@ contract Validators is System {
 
     event ValidatorCreated(address indexed validator, address indexed rewardAddr);
     event ValidatorUpdated(address indexed validator, address indexed rewardAddr);
-    event ValidatorJailed(address indexed validator);
     event ValidatorUnjailed(address indexed validator);
-    event Unstake(address indexed staker, address indexed validator, uint256 amount);
+    event Unstake(address indexed staker, address indexed validator, uint256 amount, uint256 unLockHeight);
     event Staking(address indexed staker, address indexed validator, uint256 amount);
     event WithdrawStaking(address indexed staker, address indexed validator, uint256 amount);
-    event WithdrawRewards(address indexed validator, address indexed rewardAddress, uint256 amount);
+    event WithdrawRewards(address indexed validator, address indexed rewardAddress, uint256 amount, uint256 nextWithdrawBlock);
     event RewardDistributed(address []validators, uint256 []rewards, uint256 rewardCount);
     //event RewardDistributed(address indexed validator, uint256 indexed reward);
     event ValidatorSlash(address indexed validator, uint256 amount);
-
-    event ValidatorActivated(address indexed validator);
-    event ValidatorDeactivated(address indexed validator);
 
     event ValidatorSetUpdated(address []validators);
 
@@ -265,8 +259,8 @@ contract Validators is System {
         if (valInfo.stakingAmount < MinimalStakingCoin) {
             valInfo.status = Status.Unstake;
         }
-
-        emit Unstake(staker, validator, unstakeAmount);
+        uint256 unLockHeight = block.number + StakingLockPeriod + 1;
+        emit Unstake(staker, validator, unstakeAmount, unLockHeight);
         return true;
     }
 
@@ -344,7 +338,7 @@ contract Validators is System {
         return true;
     }
 
-    // feeAddr can withdraw reward of it's validator
+    // rewardAddress can withdraw reward of it's validator
     function withdrawRewards(address validator) external returns (bool) {
         address payable rewardAddr = payable(msg.sender);
         require(
@@ -372,8 +366,8 @@ contract Validators is System {
         if (rewardAmount > 0) {
             rewardAddr.transfer(rewardAmount);
         }
-
-        emit WithdrawRewards(validator, rewardAddr, rewardAmount);
+        uint256 nextWithdrawBlock = block.number + WithdrawRewardPeriod + 1;
+        emit WithdrawRewards(validator, rewardAddr, rewardAmount, nextWithdrawBlock);
 
         return true;
     }
@@ -406,20 +400,19 @@ contract Validators is System {
         valInfo.status = Status.Jailed;
         uint256 stakingAmount = valInfo.stakingAmount;
         deactivateValidator(validator);
-        uint256 slashTotoal = 0;
+        uint256 slashTotal = 0;
         for (uint256 i = 0; i < valInfo.stakers.length; i++) {
             StakingInfo storage stakingInfo = stakerInfo[valInfo.stakers[i]][validator];
             uint256 stakerSlashAmount = stakingInfo.amount.mul(ValidatorSlashAmount).div(stakingAmount);
             stakingInfo.amount = stakingInfo.amount.sub(stakerSlashAmount);
-            slashTotoal = slashTotoal.add(stakerSlashAmount);
+            slashTotal = slashTotal.add(stakerSlashAmount);
         }
-        valInfo.stakingAmount = valInfo.stakingAmount.sub(slashTotoal);
-        valInfo.slashAmount = valInfo.slashAmount.add(slashTotoal);
-        slashTotoal = slashTotoal.add(slashTotoal);
+        valInfo.stakingAmount = valInfo.stakingAmount.sub(slashTotal);
+        valInfo.slashAmount = valInfo.slashAmount.add(slashTotal);
 
         //TODO 没罚的token，分给现有活跃的节点
-        _distributeRewardToActivatedValidators(slashTotoal, validator);
-        emit ValidatorSlash(validator, slashTotoal);
+        _distributeRewardToActivatedValidators(slashTotal, validator);
+        emit ValidatorSlash(validator, slashTotal);
     }
 
     function _distributeRewardToActivatedValidators(uint256 rewardAmount, address exceptAddress) private {
@@ -471,33 +464,6 @@ contract Validators is System {
         emit RewardDistributed(rewardValidators, validatorRewardAmount, rewardCount);
     }
 
-    function activateValidator(address validator, uint256 stakingAmount) private {
-        if (isValidatorActivated(validator)) {
-            return;
-        }
-
-        if (validatorSet.length < MaxValidatorNum) {
-            validatorSet.push(validator);
-            emit ValidatorActivated(validator);
-            return;
-        }
-
-        uint256 lowestStaking = validatorInfo[validatorSet[0]].stakingAmount;
-        uint256 lowestIndex = 0;
-        for (uint256 i = 1; i < validatorSet.length; i++) {
-            if (validatorInfo[validatorSet[i]].stakingAmount < lowestStaking) {
-                lowestStaking = validatorInfo[validatorSet[i]].stakingAmount;
-                lowestIndex = i;
-            }
-        }
-        if (stakingAmount <= lowestStaking) {
-            return;
-        }
-        validatorSet[lowestIndex] = validator;
-        emit ValidatorActivated(validator);
-        emit ValidatorDeactivated(validatorSet[lowestIndex]);
-    }
-
     function deactivateValidator(address validator) private {
         for (uint256 i = 0; i < validatorSet.length && validatorSet.length > 1; i++) {
             if (validator == validatorSet[i]) {
@@ -505,7 +471,6 @@ contract Validators is System {
                     validatorSet[i] = validatorSet[validatorSet.length-1];
                 }
                 validatorSet.pop();
-                emit ValidatorDeactivated(validator);
                 break;
             }
         }
@@ -523,8 +488,8 @@ contract Validators is System {
         );
     }
 
-    function getValidatorInfo(address val) public view returns (address payable, Status, uint256, uint256, uint256, uint256, address[] memory) {
-        Validator memory v = validatorInfo[val];
+    function getValidatorInfo(address validator) public view returns (address payable, Status, uint256, uint256, uint256, uint256, address[] memory) {
+        Validator memory v = validatorInfo[validator];
 
         return (
             v.rewardAddr,
