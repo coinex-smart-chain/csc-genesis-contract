@@ -31,7 +31,6 @@ contract Validators is System {
 
     struct Description {
         string moniker;
-        string identity;
         string website;
         string email;
         string details;
@@ -132,7 +131,6 @@ contract Validators is System {
     function create(
         address payable rewardAddr,
         string calldata moniker,
-        string calldata identity,
         string calldata website,
         string calldata email,
         string calldata details
@@ -140,7 +138,7 @@ contract Validators is System {
         address payable validator = msg.sender;
         require(validatorInfo[validator].status == Status.NotExist, "validator already exist");
         uint256 stakingAmount = msg.value;
-        _updateValidator(validator, rewardAddr, moniker, identity, website, email, details);
+        _updateValidator(validator, rewardAddr, moniker, website, email, details);
         emit ValidatorCreated(validator, rewardAddr);
         if (stakingAmount <= 0) {
             return true;
@@ -152,14 +150,13 @@ contract Validators is System {
     function edit(
         address payable rewardAddr,
         string calldata moniker,
-        string calldata identity,
         string calldata website,
         string calldata email,
         string calldata details
     ) external onlyInitialized returns (bool) {
         address payable validator = msg.sender;
         require(validatorInfo[validator].status != Status.NotExist, "validator isn't exist");
-        _updateValidator(validator, rewardAddr, moniker, identity, website, email, details);
+        _updateValidator(validator, rewardAddr, moniker, website, email, details);
         emit ValidatorUpdated(validator, rewardAddr);
         return true;
     }
@@ -266,13 +263,12 @@ contract Validators is System {
 
     function _updateValidator(address payable validator, address payable rewardAddr,
         string calldata moniker,
-        string calldata identity,
         string calldata website,
         string calldata email,
         string calldata details
     ) private returns (bool) {
         require(rewardAddr != address(0), "invalid receive reward address");
-        require(validateDescription(moniker, identity, website, email,details), "invalid validator description");
+        require(validateDescription(moniker, website, email,details), "invalid validator description");
         if (validatorInfo[validator].status == Status.NotExist) {
             validatorInfo[validator].status = Status.Created;
         }
@@ -283,7 +279,6 @@ contract Validators is System {
 
         validatorInfo[validator].description = Description(
             moniker,
-            identity,
             website,
             email,
             details
@@ -476,12 +471,11 @@ contract Validators is System {
         }
     }
 
-    function getValidatorDescription(address validator) public view returns (string memory, string memory, string memory, string memory, string memory){
+    function getValidatorDescription(address validator) public view returns (string memory, string memory, string memory, string memory){
         Validator memory v = validatorInfo[validator];
 
         return (
             v.description.moniker,
-            v.description.identity,
             v.description.website,
             v.description.email,
             v.description.details
@@ -569,13 +563,11 @@ contract Validators is System {
 
     function validateDescription(
         string memory moniker,
-        string memory identity,
         string memory website,
         string memory email,
         string memory details
     ) public pure returns (bool) {
-        require(bytes(moniker).length <= 70, "invalid moniker length");
-        require(bytes(identity).length <= 3000, "invalid identity length");
+        require(bytes(moniker).length <= 128, "invalid moniker length");
         require(bytes(website).length <= 256, "invalid website length");
         require(bytes(email).length <= 256, "invalid email length");
         require(bytes(details).length <= 1024, "invalid details length");
