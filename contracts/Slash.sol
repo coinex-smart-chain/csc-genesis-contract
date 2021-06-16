@@ -11,6 +11,7 @@ contract Slash is System {
     struct SlashRecord {
         uint256 missedBlocksCounter;
         uint256 index;
+        uint256 decreasePrevNumber;
         bool exist;
     }
 
@@ -83,7 +84,8 @@ contract Slash is System {
         uint256[] memory missedBlockCounters = new uint256[](validators.length);
         uint256 decreasedCount = 0;
         for (uint256 i = 0; i < validators.length; i++) {
-            if (slashRecords[validators[i]].exist) {
+            if (slashRecords[validators[i]].exist && slashRecords[validators[i]].decreasePrevNumber < block.number) {
+                slashRecords[validators[i]].decreasePrevNumber = block.number;
                 if (slashRecords[validators[i]].missedBlocksCounter > slashThreshold / decreaseRate) {
                     slashRecords[validators[i]].missedBlocksCounter =
                         slashRecords[validators[i]].missedBlocksCounter -
