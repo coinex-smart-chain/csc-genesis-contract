@@ -8,9 +8,11 @@ contract System {
     address public SlashContractAddr;
     // just for test
     address public coinbase;
+    uint256 public BlockEpoch;
 {% else %}
     address public constant ValidatorContractAddr = 0x0000000000000000000000000000000000001000;
     address public constant SlashContractAddr = 0x0000000000000000000000000000000000001001;
+    uint256 public constant BlockEpoch = 200;
 {% endif %}
 {% if mock %}
     modifier onlyCoinbase() {
@@ -43,8 +45,8 @@ contract System {
         _;
     }
 
-    modifier onlyBlockEpoch(uint256 epoch) {
-        require(block.number % epoch == 0, "Block epoch only");
+    modifier onlyBlockEpoch() {
+        require(block.number % BlockEpoch == 0, "Block epoch only");
         _;
     }
 {% if mock %}
@@ -55,6 +57,10 @@ contract System {
 
     function setCoinbase(address _coinbase) public {
         coinbase = _coinbase;
+    }
+
+    function setEpoch(uint256 epoch) public {
+        BlockEpoch = epoch;
     }
 {% endif %}
 }

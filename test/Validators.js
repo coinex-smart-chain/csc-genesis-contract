@@ -17,17 +17,16 @@ const Staked = new BN("2");
 const Unstaked = new BN("3");
 const Jailed = new BN("4");
 
-const monikerLength = 70;
-const identityLength = 3000;
-const websiteLength = 140;
-const emailLength = 140;
-const detailLength = 280;
+const monikerLength = 128;
+const websiteLength = 256;
+const emailLength = 256;
+const detailLength = 1024;
 const MinimalStakingCoin = 10000;
 const StakingLockPeriod = 86400;
 const WithdrawRewardPeriod = 28800;
 const MaxValidatorNum = 101;
 const ValidatorSlashAmount = 500;
-const BlockEpoch = 200;
+const BlockEpoch = 10;
 const BlockReward = new BN("1000000000000000000");
 const Ether = new BN("1000000000000000000");
 
@@ -47,7 +46,7 @@ async function createValidator(valsIns, validator, rewardAddr, value) {
         txObj['value'] = value;
     }
 
-    let createEvent = await valsIns.create(validator, rewardAddr, "", "", "", "", txObj);
+    let createEvent = await valsIns.create(validator, rewardAddr, "", "", "", txObj);
     expectEvent(
         createEvent,
         'ValidatorCreated',
@@ -92,10 +91,12 @@ contract("Validators test", function (accounts) {
         // init validator contract
         await valsIns.initialize(initValidators);
         await valsIns.setCoinbase(coinbase);
+        await valsIns.setEpoch(BlockEpoch);
 
         // init slash contract
         await slashIns.initialize();
         await slashIns.setCoinbase(coinbase)
+        await slashIns.setEpoch(BlockEpoch);
 
         // create validator
         //// unstaking test validator 
@@ -124,13 +125,13 @@ contract("Validators test", function (accounts) {
     describe("create validator", async function() {
         let validator = accounts[199];
         it("can't create validator if reward address == address(0)", async function () {
-            await expectRevert(valsIns.create(constants.ZERO_ADDRESS, "", "", "", "", "", {
+            await expectRevert(valsIns.create(constants.ZERO_ADDRESS, "", "", "", "", {
                 from: validator
             }), "invalid receive reward address");
         })
 
         it("can't create validator if validator's first staking amount less than minimal staking amount", async function(){
-            await expectRevert(valsIns.create(validator, "", "", "", "", "", {
+            await expectRevert(valsIns.create(validator, "", "", "", "", {
                 from: validator,
                 value: ether(String(MinimalStakingCoin - 1))
             }), "staking amount not enough");
@@ -138,47 +139,39 @@ contract("Validators test", function (accounts) {
 
         it ("can't create validator if validator's moniker length longer than 70", async function() {
             let moniker = generateRandomString(monikerLength + 1);
-            await expectRevert(valsIns.create(validator, moniker, "", "", "", "", {
+            await expectRevert(valsIns.create(validator, moniker, "", "", "", {
                 from: validator
             }), "invalid moniker length");
         })
 
-        it ("can't create validator if validator's identity length longer than 3000", async function() {
-            let identity = generateRandomString(identityLength + 1);
-            await expectRevert(valsIns.create(validator, "", identity, "", "", "", {
-                from: validator
-            }), "invalid identity length");
-        })
-
         it ("can't create validator if validator's website length longer than 140", async function() {
             let website = generateRandomString(websiteLength + 1);
-            await expectRevert(valsIns.create(validator, "", "", website, "", "", {
+            await expectRevert(valsIns.create(validator, "", website, "", "", {
                 from: validator
             }), "invalid website length");
         })
 
         it ("can't create validator if validator's email length longer than 140", async function() {
             let email = generateRandomString(emailLength + 1);
-            await expectRevert(valsIns.create(validator, "", "", "", email, "", {
+            await expectRevert(valsIns.create(validator, "", "", email, "", {
                 from: validator
             }), "invalid email length");
         })
 
         it ("can't create validator if validator's details length longer than 280", async function() {
             let detail = generateRandomString(detailLength + 1);
-            await expectRevert(valsIns.create(validator, "", "", "", "", detail, {
+            await expectRevert(valsIns.create(validator, "", "", "", detail, {
                 from: validator
             }), "invalid details length");
         })
 
         it("can't create validator if validator has already exist", async function(){
             let moniker = generateRandomString(monikerLength);
-            let identity = generateRandomString(identityLength);
             let website = generateRandomString(websiteLength);
             let email = generateRandomString(emailLength);
             let detail = generateRandomString(detailLength);
             let createEvent = await valsIns.create(
-                validator, moniker, identity, website, email, detail,
+                validator, moniker, website, email, detail,
                 { from: validator}
             );
             expectEvent(
@@ -190,7 +183,7 @@ contract("Validators test", function (accounts) {
                 }
             );
 
-            await expectRevert(valsIns.create(validator, moniker, identity, website, email, detail, {
+            await expectRevert(valsIns.create(validator, moniker, website, email, detail, {
                 from: validator
             }), "validator already exist");
         })
@@ -200,19 +193,19 @@ contract("Validators test", function (accounts) {
         let validator = accounts[0];
         it ("can't edit validator if validator not exist", async function () {
             let validator = accounts[198];
-            await expectRevert(valsIns.edit(validator, "", "", "", "", "", {
+            await expectRevert(valsIns.edit(validator, "", "", "", "", {
                 from: validator
             }), "validator isn't exist");
         })
 
         it("can't edit validator if reward address == address(0)", async function () {
-            await expectRevert(valsIns.edit(constants.ZERO_ADDRESS, "", "", "", "", "", {
+            await expectRevert(valsIns.edit(constants.ZERO_ADDRESS, "", "", "", "", {
                 from: validator
             }), "invalid receive reward address");
         })
 
         it("can't edit validator if validator init staking amount less than minimal staking amount", async function(){
-            await expectRevert.unspecified(valsIns.edit(constants.ZERO_ADDRESS, "", "", "", "", "", {
+            await expectRevert.unspecified(valsIns.edit(constants.ZERO_ADDRESS, "", "", "", "", {
                 from: validator,
                 value: ether(String(MinimalStakingCoin - 1))
             }));
@@ -220,35 +213,28 @@ contract("Validators test", function (accounts) {
 
         it ("can't edit validator if validator's moniker length longer than 70", async function() {
             let moniker = generateRandomString(monikerLength + 1);
-            await expectRevert(valsIns.edit(validator, moniker, "", "", "", "", {
+            await expectRevert(valsIns.edit(validator, moniker, "", "", "", {
                 from: validator
             }), "invalid moniker length");
         })
 
-        it ("can't edit validator if validator's identity length longer than 3000", async function() {
-            let identity = generateRandomString(identityLength + 1);
-            await expectRevert(valsIns.edit(validator, "", identity, "", "", "", {
-                from: validator
-            }), "invalid identity length");
-        })
-
         it ("can't edit validator if validator's website length longer than 140", async function() {
             let website = generateRandomString(websiteLength + 1);
-            await expectRevert(valsIns.edit(validator, "", "", website, "", "", {
+            await expectRevert(valsIns.edit(validator, "", website, "", "", {
                 from: validator
             }), "invalid website length");
         })
 
         it ("can't edit validator if validator's email length longer than 140", async function() {
             let email = generateRandomString(emailLength + 1);
-            await expectRevert(valsIns.edit(validator, "", "", "", email, "", {
+            await expectRevert(valsIns.edit(validator, "", "", email, "", {
                 from: validator
             }), "invalid email length");
         })
 
         it ("can't edit validator if validator's details length longer than 280", async function() {
             let detail = generateRandomString(detailLength + 1);
-            await expectRevert(valsIns.edit(validator, "", "", "", "", detail, {
+            await expectRevert(valsIns.edit(validator, "", "", "", detail, {
                 from: validator
             }), "invalid details length");
         })
@@ -265,7 +251,7 @@ contract("Validators test", function (accounts) {
 
         it ("first staking must more than minimal staking amount", async function() {
             let createEvent = await valsIns.create(
-                validator, "", "", "", "", "",
+                validator, "", "", "", "",
                 { from: validator}
             );
             expectEvent(
@@ -286,7 +272,7 @@ contract("Validators test", function (accounts) {
         it ("can't stake when you are unstaking", async function() {
             let validator = accounts[196];
             let createEvent = await valsIns.create(
-                validator, "", "", "", "", "",
+                validator, "", "", "", "",
                 { from: validator}
             );
             expectEvent(
@@ -345,7 +331,7 @@ contract("Validators test", function (accounts) {
 
         it ("can't unstake if staking amount is 0", async function() {
             let createEvent = await valsIns.create(
-                validator, "", "", "", "", "",
+                validator, "", "", "", "",
                 { from: validator}
             );
             expectEvent(
@@ -364,7 +350,7 @@ contract("Validators test", function (accounts) {
         it ("can't unstake when your last unstaking hasn't finished", async function() {
             let validator = accounts[188];
             let createEvent = await valsIns.create(
-                validator, "", "", "", "", "",
+                validator, "", "", "", "",
                 { from: validator}
             );
             expectEvent(
@@ -572,53 +558,54 @@ contract("Validators test", function (accounts) {
 
     describe("update set", async function () {
         it("update active validator set", async function () {
+            let newValidators = [];
             for (let i = 1; i < 120; i++) {
                 let stakingAmount = ether(String(MinimalStakingCoin * (i + 1)));
                 await createValidator(valsIns, accounts[i], accounts[i], stakingAmount);
+                if(i >= 120 - MaxValidatorNum) {
+                    newValidators.push(accounts[i]);
+                }
             }
+            newValidators.sort()
+    
+            let result = await valsIns.getValidatorCandidate.call();
+            let validatorAddresses = result[0];
+            let count = result[2].toNumber();
+            let validators = [];
+            expect(count).to.equal(MaxValidatorNum);
+            for (let i = 0; i < count; i++) {
+                validators.push(validatorAddresses[i]);
+            }
+            validators.sort();
+            for (let i = 0; i < MaxValidatorNum; i ++) {
+                expect(validators[i]).to.equal(newValidators[i]);
+            }
+
             let currentBlockNumber = await time.latestBlock();
             currentBlockNumber = currentBlockNumber.toNumber();
             if (currentBlockNumber % BlockEpoch != 0) {
                 let advanceBlock = BlockEpoch - currentBlockNumber % BlockEpoch - 1;
                 await time.advanceBlockTo(new BN(String(currentBlockNumber + advanceBlock)));
             }
-            let result = await valsIns.getValidatorCandidate.call();
-            let validatorAddresses = result[0];
-            let stakings = result[1];
-            let count = result[2].toNumber();
-            let validators = [];
-            for (let i = 0; i < count; i++) {
-                validators.push({
-                    'address': validatorAddresses[i],
-                    'staking': stakings[i]
-                });
-            }
-            if (count > MaxValidatorNum) {
-                count = MaxValidatorNum;
-            }
-            validators.sort(function(a, b){
-                return -1 * a.staking.cmp(b);
-            })
 
-            let newSet = []
-            for (let i = 0; i < count; i++) {
-                newSet.push(validators[i].address);
-            }
-
-            let blockNumber = await time.latestBlock();
-            blockNumber = blockNumber.toNumber();
-            let validatorUpdateEvent = await valsIns.updateActivatedValidators(newSet, BlockEpoch, {
+            let validatorUpdateEvent = await valsIns.updateActivatedValidators({
                 from: coinbase
             });
-            expectEvent(
-                validatorUpdateEvent,
-                'ValidatorSetUpdated',
-                {
-                    validators: newSet
-                }
-            );
-            for (let i = 0; i < newSet.length; i++) {
-                let isActivated = await valsIns.isValidatorActivated(newSet[i]);
+        
+            let activatedValidators = await valsIns.getActivatedValidators();
+            expect(activatedValidators.length).to.equal(MaxValidatorNum);
+
+            let newActivatedValidators = [];
+            for (let i = 0; i < MaxValidatorNum; i++) {
+                newActivatedValidators.push(activatedValidators[i]);
+            }
+            newActivatedValidators.sort();
+    
+            for (let i = 0; i < MaxValidatorNum; i ++) {
+                expect(newActivatedValidators[i]).to.equal(newValidators[i]);
+            }
+            for (let i = 0; i < newActivatedValidators.length; i++) {
+                let isActivated = await valsIns.isValidatorActivated(newActivatedValidators[i]);
                 expect(isActivated).to.equal(true);
             }
         })
@@ -661,16 +648,9 @@ contract("Validators test", function (accounts) {
                     let remain = reward.sub(distributedAmount);
                     stakingReward = stakingReward.add(remain);
                 }
-                console.log("i = ", i, ", validator = ", validator, ", staking = ", validatorRewards[validator]['stakingAmount'].toString(), ", reward = ", stakingReward.toString());
                 let addReward = distributedRewards[i];
                 expect(addReward.eq(stakingReward)).to.equal(true);
             }
-        })
-    })
-
-    describe("update set", async function () {
-        it ("distribute reward to validator contract with stake", async function(){
-            
         })
     })
 })

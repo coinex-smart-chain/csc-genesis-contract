@@ -69,33 +69,33 @@ contract Slash is System {
         emit ValidatorMissedBlock(validator);
     }
 
-    function decreaseMissedBlocksCounter(address[] calldata validators, uint256 epoch)
+    function decreaseMissedBlocksCounter()
         external
         onlyCoinbase
         onlyNotDecreased
         onlyInitialized
-        onlyBlockEpoch(epoch)
+        onlyBlockEpoch()
     {
-        if (slashValidators.length == 0 || validators.length == 0) {
+        if (slashValidators.length == 0) {
             return;
         }
 
-        address[] memory decreasedValidators = new address[](validators.length);
-        uint256[] memory missedBlockCounters = new uint256[](validators.length);
+        address[] memory decreasedValidators = new address[](slashValidators.length);
+        uint256[] memory missedBlockCounters = new uint256[](slashValidators.length);
         uint256 decreasedCount = 0;
-        for (uint256 i = 0; i < validators.length; i++) {
-            if (slashRecords[validators[i]].exist && slashRecords[validators[i]].decreasePrevNumber < block.number) {
-                slashRecords[validators[i]].decreasePrevNumber = block.number;
-                if (slashRecords[validators[i]].missedBlocksCounter > slashThreshold / decreaseRate) {
-                    slashRecords[validators[i]].missedBlocksCounter =
-                        slashRecords[validators[i]].missedBlocksCounter -
+        for (uint256 i = 0; i < slashValidators.length; i++) {
+            if (slashRecords[slashValidators[i]].exist && slashRecords[slashValidators[i]].decreasePrevNumber < block.number) {
+                slashRecords[slashValidators[i]].decreasePrevNumber = block.number;
+                if (slashRecords[slashValidators[i]].missedBlocksCounter > slashThreshold / decreaseRate) {
+                    slashRecords[slashValidators[i]].missedBlocksCounter =
+                        slashRecords[slashValidators[i]].missedBlocksCounter -
                         slashThreshold /
                         decreaseRate;
                 } else {
-                    slashRecords[validators[i]].missedBlocksCounter = 0;
+                    slashRecords[slashValidators[i]].missedBlocksCounter = 0;
                 }
-                decreasedValidators[decreasedCount] = validators[i];
-                missedBlockCounters[decreasedCount] = slashRecords[validators[i]].missedBlocksCounter;
+                decreasedValidators[decreasedCount] = slashValidators[i];
+                missedBlockCounters[decreasedCount] = slashRecords[slashValidators[i]].missedBlocksCounter;
                 decreasedCount++;
             }
         }

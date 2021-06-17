@@ -17,7 +17,7 @@ const Staked = new BN("2");
 const Unstaked = new BN("3");
 const Jailed = new BN("4");
 const slashThreshold = 48;
-const BlockEpoch = 200;
+const BlockEpoch = 10;
 const MaxValidatorNum = 101;
 const MinimalStakingCoin = 10000;
 
@@ -25,7 +25,7 @@ async function slashValidator(slashIns, coinbase, validator) {
     let slashEvent = await slashIns.slash(validator, {from: coinbase});
     expectEvent(
         slashEvent,
-        'ValidatorSlash',
+        'ValidatorMissedBlock',
         {
             validator: validator
         }
@@ -38,7 +38,7 @@ async function createValidator(valsIns, validator, rewardAddr, value) {
         txObj['value'] = value;
     }
 
-    let createEvent = await valsIns.create(validator, rewardAddr, "", "", "", "", txObj);
+    let createEvent = await valsIns.create(validator, rewardAddr, "", "", "", txObj);
     expectEvent(
         createEvent,
         'ValidatorCreated',
@@ -64,10 +64,12 @@ contract("Slash contract test", function (accounts) {
         // init validator contract
         await valsIns.initialize(initValidators);
         await valsIns.setCoinbase(coinbase);
+        await valsIns.setEpoch(BlockEpoch);
 
         // init slash contract
         await slashIns.initialize();
         await slashIns.setCoinbase(coinbase)
+        await slashIns.setEpoch(BlockEpoch);
     })
 
     it("can only init once", async function () {
@@ -99,14 +101,16 @@ contract("Slash contract test", function (accounts) {
                 let stakingAmount = ether(String(MinimalStakingCoin * (i + 1)));
                 await createValidator(valsIns, accounts[i], accounts[i], stakingAmount);
             }
-
+            
             let currentBlockNumber = await time.latestBlock();
             currentBlockNumber = currentBlockNumber.toNumber();
             if (currentBlockNumber % BlockEpoch != 0) {
                 let advanceBlock = BlockEpoch - currentBlockNumber % BlockEpoch - 1;
                 await time.advanceBlockTo(new BN(String(currentBlockNumber + advanceBlock)));
             }
-
+            let validatorUpdateEvent = await valsIns.updateActivatedValidators({
+                from: coinbase
+            });
             let result = await valsIns.getValidatorCandidate.call();
             let validatorAddresses = result[0];
             let stakings = result[1];
@@ -130,26 +134,22 @@ contract("Slash contract test", function (accounts) {
                 newSet.push(validators[i].address);
             }
 
-            await valsIns.getValidatorCandidate.call();
-            await valsIns.updateActivatedValidators(newSet, BlockEpoch, {
-                from: coinbase
-            });
             let slashVal = newSet[1];
-            console.log(" is activated = ", valsIns.isValidatorActivated(validator));
             let missedBlockCounter = await slashIns.getSlashRecord(slashVal);
-            console.log('missedBlockCounter = ', missedBlockCounter.toNumber());
             expect(missedBlockCounter.toNumber()).to.equal(0);
             let slashValidatorCount = await slashIns.getSlashValidatorsLen();
             expect(slashValidatorCount.toNumber()).to.equal(0);
             for (let i = 0; i < slashThreshold; i++) {
-                console.log('i = ', i);
+                missedBlockCounter = await slashIns.getSlashRecord(slashVal);
+                expect(missedBlockCounter.toNumber()).to.equal(i);
                 await slashValidator(slashIns, coinbase, slashVal);
+                slashValidatorCount = await slashIns.getSlashValidatorsLen();
+                expect(slashValidatorCount.toNumber()).to.equal(1);
             }
-            missedBlockCounter = await slashIns.getSlashRecord(coinbase);
-            expect(missedBlockCounter.toNumber()).to.equal(slashThreshold);
-            slashValidatorCount = await slashIns.getSlashValidatorsLen();
-            expect(slashValidatorCount.toNumber()).to.equal(1);
-            let validatoInfo = valsIns.getValidatorInfo(slashVal)
+            missedBlockCounter = await slashIns.getSlashRecord(slashVal);
+            expect(missedBlockCounter.toNumber()).to.equal(0);
+            let validatoInfo = await valsIns.getValidatorInfo(slashVal);
+            console.log(validatoInfo);
             let status = validatoInfo[1];
             expect(Jailed.eq(status)).to.equal(true);
         })
