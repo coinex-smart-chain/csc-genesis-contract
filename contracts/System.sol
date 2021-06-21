@@ -6,7 +6,7 @@ contract System {
 
     address public constant ValidatorContractAddr = 0x0000000000000000000000000000000000001000;
     address public constant SlashContractAddr = 0x0000000000000000000000000000000000001001;
-
+    uint256 public constant BlockEpoch = 200;
 
     modifier onlyCoinbase() {
         require(msg.sender == block.coinbase, "the message sender must be the block producer");
@@ -33,9 +33,8 @@ contract System {
         _;
     }
 
-    modifier onlyBlockEpoch(uint256 epoch) {
-        require(block.number % epoch == 0, "Block epoch only");
+    modifier onlyBlockEpoch() {
+        require(block.number % BlockEpoch == 0, "Block epoch only");
         _;
     }
-
 }

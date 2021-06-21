@@ -59,9 +59,9 @@ contract Validators is System {
     mapping(address => Validator) validatorInfo;
     // staker => validator => info
     mapping(address => mapping(address => StakingInfo)) stakerInfo;
-    // validator candidate set
+    // validator candidate set (dynamic changed)
     address[] public validatorCandidateSet;
-    // top validator set(dynamic changed)
+    // current activate validator set
     address[] public validatorSet;
     // total staking amount of all validators
     uint256 public totalStaking;
@@ -85,6 +85,9 @@ contract Validators is System {
     event ValidatorSlash(address indexed validator, uint256 amount);
 
     event ValidatorSetUpdated(address []validators);
+
+    event AddToValidatorCandidate(address indexed validator);
+    event RemoveFromValidatorCandidate(address indexed valdiator);
 
     modifier onlyNotRewarded() {
         require(
@@ -113,12 +116,15 @@ contract Validators is System {
             if (!isValidatorCandidate(validators[i])) {
                 validatorCandidateSet.push(validators[i]);
             }
+            
             if (!isValidatorActivated(validators[i])) {
                 validatorSet.push(validators[i]);
             }
+            
             if (validatorInfo[validators[i]].rewardAddr == address(0)) {
                 validatorInfo[validators[i]].rewardAddr = payable(validators[i]);
             }
+            
             // Important: NotExist validator can't get rewards
             if (validatorInfo[validators[i]].status == Status.NotExist) {
                 validatorInfo[validators[i]].status = Status.Staked;
@@ -190,10 +196,6 @@ contract Validators is System {
             "staking amount not enough"
         );
 
-        if (!isValidatorCandidate(validator)) {
-            validatorCandidateSet.push(validator);
-        }
-
         // stake at first time to this valiadtor
         if (stakerInfo[staker][validator].amount == 0) {
             // add staker to validator's record list
@@ -210,6 +212,11 @@ contract Validators is System {
         stakerInfo[staker][validator].amount = stakerInfo[staker][validator].amount.add(stakingAmount);
         totalStaking = totalStaking.add(stakingAmount);
         emit Staking(staker, validator, stakingAmount);
+
+        if (valInfo.status == Status.Staked) {
+            addToValidatorCandidate(validator, valInfo.stakingAmount);
+        }
+
         return true;
     }
 
@@ -258,6 +265,10 @@ contract Validators is System {
         }
         uint256 unLockHeight = block.number + StakingLockPeriod + 1;
         emit Unstake(staker, validator, unstakeAmount, unLockHeight);
+
+        if (valInfo.status != Status.Staked) {
+            removeFromValidatorCandidate(validator);
+        }
         return true;
     }
 
@@ -299,6 +310,7 @@ contract Validators is System {
 
         if (validatorInfo[validator].stakingAmount >= MinimalStakingCoin) {
             validatorInfo[validator].status = Status.Staked;
+            addToValidatorCandidate(validator, validatorInfo[validator].stakingAmount);
         } else {
             validatorInfo[validator].status = Status.Unstake;
         }
@@ -395,6 +407,8 @@ contract Validators is System {
         valInfo.status = Status.Jailed;
         uint256 stakingAmount = valInfo.stakingAmount;
         deactivateValidator(validator);
+        removeFromValidatorCandidate(validator);
+
         uint256 slashTotal = 0;
         for (uint256 i = 0; i < valInfo.stakers.length; i++) {
             StakingInfo storage stakingInfo = stakerInfo[valInfo.stakers[i]][validator];
@@ -405,7 +419,6 @@ contract Validators is System {
         valInfo.stakingAmount = valInfo.stakingAmount.sub(slashTotal);
         valInfo.slashAmount = valInfo.slashAmount.add(slashTotal);
 
-        //TODO 没罚的token，分给现有活跃的节点
         _distributeRewardToActivatedValidators(slashTotal, validator);
         emit ValidatorSlash(validator, slashTotal);
     }
@@ -518,16 +531,17 @@ contract Validators is System {
         return (candidates, stakings, count);
     }
 
-    function updateActivatedValidators(address [] memory newValidators, uint256 epoch) public 
+    function updateActivatedValidators() public 
         onlyCoinbase
         onlyNotUpdated
         onlyInitialized
-        onlyBlockEpoch(epoch) 
+        onlyBlockEpoch() returns (address[] memory)
     {
-        require(newValidators.length > 0, "validator set empty");
-        require(newValidators.length <= MaxValidatorNum, "validator can't more than 101");
-        validatorSet = newValidators;
+        require(validatorCandidateSet.length > 0, "validator set empty");
+        require(validatorCandidateSet.length <= MaxValidatorNum, "validator can't more than 101");
+        validatorSet = validatorCandidateSet;
         emit ValidatorSetUpdated(validatorSet);
+        return validatorSet;
     }
 
     function isValidatorCandidate(address who) public view returns (bool) {
@@ -573,5 +587,50 @@ contract Validators is System {
         require(bytes(details).length <= 1024, "invalid details length");
 
         return true;
+    }
+
+    function addToValidatorCandidate(address validator, uint256 staking) internal returns (bool){
+        for (uint256 i = 0; i < validatorCandidateSet.length; i++) {
+            if (validatorCandidateSet[i] == validator) {
+                return true;
+            }
+        }
+
+        if (validatorCandidateSet.length < MaxValidatorNum) {
+            validatorCandidateSet.push(validator);
+            emit AddToValidatorCandidate(validator);
+            return true;
+        }
+
+        uint256 lowestStaking = validatorInfo[validatorCandidateSet[0]].stakingAmount;
+        uint256 lowestIndex = 0;
+        for (uint256 i = 1; i < validatorCandidateSet.length; i++) {
+            if (validatorInfo[validatorCandidateSet[i]].stakingAmount < lowestStaking) {
+                lowestStaking = validatorInfo[validatorCandidateSet[i]].stakingAmount;
+                lowestIndex = i;
+            }
+        }
+
+        if (staking <= lowestStaking) {
+            return false;
+        }
+
+        emit RemoveFromValidatorCandidate(validatorCandidateSet[lowestIndex]);
+        emit AddToValidatorCandidate(validator);
+        validatorCandidateSet[lowestIndex] = validator;
+        return true;
+    }
+
+    function removeFromValidatorCandidate(address validator) internal {
+        for (uint256 i = 0; i < validatorCandidateSet.length && validatorCandidateSet.length > 1; i++) {
+            if (validatorCandidateSet[i] == validator) {
+                if (i != validatorCandidateSet.length - 1) {
+                    validatorCandidateSet[i] = validatorCandidateSet[validatorCandidateSet.length - 1];
+                }
+                validatorCandidateSet.pop();
+                emit RemoveFromValidatorCandidate(validator);
+                break;
+            }
+        }
     }
 }
