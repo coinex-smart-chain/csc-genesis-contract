@@ -393,6 +393,7 @@ contract Validators is System {
         onlyCoinbase
         onlyNotRewarded
         onlyInitialized
+        onlyBlockEpoch()
     {
         address validator = msg.sender;
         uint256 amount = msg.value;
