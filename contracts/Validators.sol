@@ -15,6 +15,7 @@ contract Validators is System {
     uint64 public constant WithdrawRewardPeriod = 28800;
     uint256 public constant MinimalStakingCoin = 10000 ether;
     uint256 public constant ValidatorSlashAmount = 500 ether;
+    uint256 public constant MinimalOfStaking = 1000 ether;
 
     enum Status {
         // validator not exist, default status
@@ -189,11 +190,17 @@ contract Validators is System {
             "can't stake when you are unstaking"
         );
 
+        // staking amount must >= 1000cet
+        require(
+            stakingAmount >= MinimalOfStaking,
+            "staking amount must more than 1000cet"
+        );
+
         Validator storage valInfo = validatorInfo[validator];
         // The staked amount of validator must >= MinimalStakingCoin
         require(
             valInfo.stakingAmount.add(stakingAmount) >= MinimalStakingCoin,
-            "staking amount not enough"
+            "staking amount must more than 10000cet"
         );
 
         // stake at first time to this valiadtor
@@ -207,7 +214,7 @@ contract Validators is System {
         if (valInfo.status != Status.Staked && valInfo.status != Status.Jailed) {
             valInfo.status = Status.Staked;
         }
-        
+
         // record staker's info
         stakerInfo[staker][validator].amount = stakerInfo[staker][validator].amount.add(stakingAmount);
         totalStaking = totalStaking.add(stakingAmount);
