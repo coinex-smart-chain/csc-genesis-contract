@@ -22,6 +22,7 @@ const websiteLength = 256;
 const emailLength = 256;
 const detailLength = 1024;
 const MinimalStakingCoin = 10000;
+const MinimalOfStaking = 1000;
 const StakingLockPeriod = 86400;
 const WithdrawRewardPeriod = 28800;
 const MaxValidatorNum = 101;
@@ -120,6 +121,10 @@ contract("Validators test", function (accounts) {
         let stakingCoin = new BN(String(MinimalStakingCoin));
         stakingCoin = stakingCoin.mul(new BN('1000000000000000000'));
         expect(minimalStakingCoin.toString()).to.equal(stakingCoin.toString());
+        let minimalOfStaking = await valsIns.MinimalOfStaking();
+        let staking = new BN(String(MinimalOfStaking));
+        staking = staking.mul(new BN('1000000000000000000'));
+        expect(minimalOfStaking.toString()).to.equal(staking.toString());
     })
 
     describe("create validator", async function() {
@@ -134,7 +139,7 @@ contract("Validators test", function (accounts) {
             await expectRevert(valsIns.create(validator, "", "", "", "", {
                 from: validator,
                 value: ether(String(MinimalStakingCoin - 1))
-            }), "staking amount not enough");
+            }), "staking amount must more than 10000cet");
         })
 
         it ("can't create validator if validator's moniker length longer than 70", async function() {
@@ -266,7 +271,7 @@ contract("Validators test", function (accounts) {
             await expectRevert(valsIns.stake(validator, {
                 from: validator,
                 value: ether(String(MinimalStakingCoin-1))
-            }), "staking amount not enough");
+            }), "staking amount must more than 10000cet");
         })
 
         it ("can't stake when you are unstaking", async function() {
@@ -318,6 +323,30 @@ contract("Validators test", function (accounts) {
                 from: validator,
                 value: ether(String(MinimalStakingCoin))
             }), "can't stake when you are unstaking");
+        })
+
+        it ("every staking must more than minimal of staking", async function() {
+            let validator = accounts[195];
+            let createEvent = await valsIns.create(
+                validator, "", "", "", "",
+                {
+                    from: validator,
+                    value: ether(String(MinimalStakingCoin))
+                }
+            );
+            expectEvent(
+                createEvent,
+                'ValidatorCreated',
+                {
+                    validator: validator,
+                    rewardAddr: validator
+                }
+            );
+
+            await expectRevert(valsIns.stake(validator, {
+                from: validator,
+                value: ether(String(MinimalOfStaking-1))
+            }), "staking amount must more than 1000cet");
         })
     })
 
@@ -476,9 +505,21 @@ contract("Validators test", function (accounts) {
 
     describe("distributeBlockReward", async function(){
         it("distribute to validator contract with no stake(at genesis period)", async function () {
+            let currentBlockNumber = await time.latestBlock();
+            currentBlockNumber = currentBlockNumber.toNumber();
+            if (currentBlockNumber % BlockEpoch != BlockEpoch - 1) {
+                let advanceBlock = BlockEpoch - currentBlockNumber % BlockEpoch - 1;
+                await time.advanceBlockTo(new BN(String(currentBlockNumber + advanceBlock)));
+            }
+
+            currentBlockNumber = await time.latestBlock();
+            currentBlockNumber = currentBlockNumber.toNumber();
+            expect(currentBlockNumber % BlockEpoch).to.equal(BlockEpoch - 1);
+
             let txFee = new BN("1");
             txFee = txFee.mul(Ether);
             let reward = txFee.add(BlockReward);
+            reward = reward.mul(new BN(BlockEpoch));
             let activatedValidators = await valsIns.getActivatedValidators();
             let validatorCount = activatedValidators.length;
             let validatorRewards = {}
@@ -583,10 +624,14 @@ contract("Validators test", function (accounts) {
 
             let currentBlockNumber = await time.latestBlock();
             currentBlockNumber = currentBlockNumber.toNumber();
-            if (currentBlockNumber % BlockEpoch != 0) {
+            if (currentBlockNumber % BlockEpoch != BlockEpoch - 1) {
                 let advanceBlock = BlockEpoch - currentBlockNumber % BlockEpoch - 1;
                 await time.advanceBlockTo(new BN(String(currentBlockNumber + advanceBlock)));
             }
+
+            currentBlockNumber = await time.latestBlock();
+            currentBlockNumber = currentBlockNumber.toNumber();
+            expect(currentBlockNumber % BlockEpoch).to.equal(BlockEpoch - 1);
 
             let validatorUpdateEvent = await valsIns.updateActivatedValidators({
                 from: coinbase
@@ -611,9 +656,21 @@ contract("Validators test", function (accounts) {
         })
 
         it ("distribute reward to validator contract with stake", async function(){
+            let currentBlockNumber = await time.latestBlock();
+            currentBlockNumber = currentBlockNumber.toNumber();
+            if (currentBlockNumber % BlockEpoch != BlockEpoch - 1) {
+                let advanceBlock = BlockEpoch - currentBlockNumber % BlockEpoch - 1;
+                await time.advanceBlockTo(new BN(String(currentBlockNumber + advanceBlock)));
+            }
+
+            currentBlockNumber = await time.latestBlock();
+            currentBlockNumber = currentBlockNumber.toNumber();
+            expect(currentBlockNumber % BlockEpoch).to.equal(BlockEpoch - 1);
+
             let txFee = new BN("1");
             txFee = txFee.mul(Ether);
             let reward = txFee.add(BlockReward);
+            reward = reward.mul(new BN(BlockEpoch));
             let activatedValidators = await valsIns.getActivatedValidators();
             let validatorCount = activatedValidators.length;
             let validatorRewards = {}
